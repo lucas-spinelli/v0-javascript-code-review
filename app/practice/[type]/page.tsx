@@ -4,9 +4,8 @@ import { useState, useEffect } from "react"
 import { useRouter, useParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
-import { AlertCircle, CheckCircle, Clock, Trophy, ArrowLeft } from "lucide-react"
+import { AlertCircle, CheckCircle, Trophy, ArrowLeft } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import confetti from "canvas-confetti"
 import { useAuth } from "@/contexts/auth-context"
@@ -46,8 +45,6 @@ export default function PracticePage() {
   const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null)
   const [score, setScore] = useState(0)
   const [streak, setStreak] = useState(0)
-  const [timeLeft, setTimeLeft] = useState(15)
-  const [isTimerRunning, setIsTimerRunning] = useState(false)
   const [difficulty, setDifficulty] = useState<"fácil" | "medio" | "difícil">("fácil")
   const [answeredQuestions, setAnsweredQuestions] = useState(0)
   const [correctAnswers, setCorrectAnswers] = useState(0)
@@ -103,9 +100,6 @@ export default function PracticePage() {
       correctAnswer,
       options,
     })
-
-    setTimeLeft(15)
-    setIsTimerRunning(true)
   }
 
   // Generar un número aleatorio entre min y max
@@ -134,7 +128,6 @@ export default function PracticePage() {
 
   // Verificar respuesta
   const checkAnswer = async (selectedAnswer: number) => {
-    setIsTimerRunning(false)
     setAnsweredQuestions((prev) => prev + 1)
 
     if (currentQuestion && selectedAnswer === currentQuestion.correctAnswer) {
@@ -144,7 +137,7 @@ export default function PracticePage() {
       setScore((prev) => prev + pointsEarned)
       setStreak((prev) => prev + 1)
 
-      // Actualizar puntos en Firebase
+      // Actualizar puntos en Firebase y localStorage
       if (user) {
         await updateUserPoints(user.uid, pointsEarned)
         await updateExerciseCompletion(user.uid, type)
@@ -192,7 +185,7 @@ export default function PracticePage() {
     }
   }
 
-  // Calcular puntos basados en dificultad, tiempo restante y operación
+  // Calcular puntos basados en dificultad y operación (sin tiempo)
   const calculatePoints = () => {
     if (!currentQuestion) return 0
 
@@ -209,37 +202,8 @@ export default function PracticePage() {
       "÷": 2,
     }[currentQuestion.operation]
 
-    const timeBonus = Math.max(1, timeLeft / 5)
-
-    return Math.round(10 * difficultyMultiplier * operationMultiplier * timeBonus)
+    return Math.round(10 * difficultyMultiplier * operationMultiplier)
   }
-
-  // Efecto para el temporizador
-  useEffect(() => {
-    let timer: NodeJS.Timeout
-
-    if (isTimerRunning && timeLeft > 0) {
-      timer = setTimeout(() => {
-        setTimeLeft((prev) => prev - 1)
-      }, 1000)
-    } else if (timeLeft === 0 && isTimerRunning) {
-      setIsTimerRunning(false)
-      toast({
-        title: "¡Tiempo agotado!",
-        description: `La respuesta correcta era ${currentQuestion?.correctAnswer}`,
-        variant: "destructive",
-      })
-      setStreak(0)
-      setAnsweredQuestions((prev) => prev + 1)
-
-      // Generar nueva pregunta después de un breve retraso
-      setTimeout(() => {
-        generateQuestion(operation)
-      }, 1500)
-    }
-
-    return () => clearTimeout(timer)
-  }, [timeLeft, isTimerRunning, currentQuestion, toast, operation])
 
   // Generar primera pregunta al cargar
   useEffect(() => {
@@ -260,7 +224,7 @@ export default function PracticePage() {
         </div>
 
         {/* Estadísticas */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
           <Card className="p-4 text-center">
             <Trophy className="h-6 w-6 mx-auto mb-2 text-yellow-500" />
             <p className="text-sm text-gray-500">Puntuación</p>
@@ -274,25 +238,10 @@ export default function PracticePage() {
           </Card>
 
           <Card className="p-4 text-center">
-            <Clock className="h-6 w-6 mx-auto mb-2 text-blue-500" />
-            <p className="text-sm text-gray-500">Tiempo</p>
-            <p className="text-xl font-bold">{timeLeft}s</p>
-          </Card>
-
-          <Card className="p-4 text-center">
             <AlertCircle className="h-6 w-6 mx-auto mb-2 text-purple-500" />
             <p className="text-sm text-gray-500">Precisión</p>
             <p className="text-xl font-bold">{accuracyPercentage}%</p>
           </Card>
-        </div>
-
-        {/* Barra de tiempo */}
-        <div className="mb-6">
-          <Progress
-            value={(timeLeft / 15) * 100}
-            className="h-2"
-            indicatorClassName={`${timeLeft < 5 ? "bg-red-500" : "bg-green-500"}`}
-          />
         </div>
 
         {/* Selector de dificultad */}

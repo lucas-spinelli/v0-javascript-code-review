@@ -12,6 +12,8 @@ import {
 import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore"
 import { auth, googleProvider, db } from "@/lib/firebase"
 import { useToast } from "@/hooks/use-toast"
+import { getProgressFromLocalStorage, initLocalProgress, type LocalUserProgress } from "@/services/storage-service"
+import { syncPendingUpdates, refreshUserDataFromFirebase } from "@/services/user-service"
 
 interface AuthContextType {
   user: User | null
@@ -45,8 +47,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Verificar si estamos en el navegador
   const isBrowser = typeof window !== "undefined"
 
+  // Función para convertir el progreso local a formato UserProgress
+  const convertLocalProgressToUserProgress = (localProgress: LocalUserProgress): UserProgress => {
+    return {
+      points: localProgress.points,
+      level: Math.floor(localProgress.points / 100) + 1, // Calcular nivel basado en puntos
+      streak: localProgress.streak,
+      lastActive: localProgress.lastActive ? new Date(localProgress.lastActive) : null,
+      completedExercises: localProgress.completedExercises,
+    }
+  }
+
+  // Función para sincronizar datos cuando hay conexión
+  const syncDataWithFirebase = async (userId: string) => {
+    try {
+      await syncPendingUpdates(userId)
+    } catch (error) {
+      console.error("Error al sincronizar datos con Firebase:", error)
+    }
+  }
+
   useEffect(() => {
     if (!isBrowser) return
+
+    // Verificar conexión a internet y sincronizar si está disponible
+    const handleOnline = () => {
+      console.log("Conexión a internet restablecida")
+      if (user) {
+        syncDataWithFirebase(user.uid)
+      }
+    }
+
+    window.addEventListener("online", handleOnline)
 
     // Manejar el resultado de la redirección al cargar la página
     const handleRedirectResult = async () => {
@@ -74,13 +106,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (user) {
         try {
-          // Fetch user progress from Firestore
+          // Inicializar progreso local para este usuario
+          initLocalProgress(user.uid)
+
+          // Intentar obtener datos de Firebase primero
           const userDocRef = doc(db, "users", user.uid)
           const userDoc = await getDoc(userDocRef)
 
           if (userDoc.exists()) {
             const userData = userDoc.data() as any
-            setUserProgress({
+
+            // Actualizar progreso en memoria
+            const progress: UserProgress = {
               points: userData.points || 0,
               level: userData.level || 1,
               streak: userData.streak || 0,
@@ -91,9 +128,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 multiplication: 0,
                 division: 0,
               },
-            })
+            }
+
+            setUserProgress(progress)
+
+            // Actualizar localStorage con datos de Firebase
+            await refreshUserDataFromFirebase(user.uid)
           } else {
-            // Create new user document if it doesn't exist
+            // Si no existe en Firebase, crear nuevo documento
             const newUserData = {
               email: user.email,
               displayName: user.displayName,
@@ -112,7 +154,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
 
             await setDoc(userDocRef, newUserData)
-            setUserProgress({
+
+            const newProgress: UserProgress = {
               points: 0,
               level: 1,
               streak: 0,
@@ -123,19 +166,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 multiplication: 0,
                 division: 0,
               },
-            })
+            }
+
+            setUserProgress(newProgress)
           }
+
+          // Sincronizar actualizaciones pendientes
+          await syncDataWithFirebase(user.uid)
         } catch (error) {
           console.error("Error al obtener datos del usuario:", error)
+
+          // Si hay error, intentar usar datos de localStorage
+          const localProgress = getProgressFromLocalStorage()
+          if (localProgress) {
+            setUserProgress(convertLocalProgressToUserProgress(localProgress))
+          }
         }
       } else {
         setUserProgress(null)
+        // Inicializar progreso local para usuario anónimo
+        initLocalProgress(null)
       }
 
       setLoading(false)
     })
 
-    return () => unsubscribe()
+    return () => {
+      window.removeEventListener("online", handleOnline)
+      unsubscribe()
+    }
   }, [isBrowser, toast])
 
   // Función para iniciar sesión con Google
@@ -145,15 +204,53 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       console.log("Intentando iniciar sesión con Google...")
 
-      // Primero intentamos con popup
-      try {
-        const result = await signInWithPopup(auth, googleProvider)
-        console.log("Inicio de sesión con popup exitoso:", result.user.displayName)
-        return
-      } catch (popupError: any) {
-        console.warn("Error con popup, intentando redirección:", popupError.message)
+      // Abrir una nueva ventana para la autenticación
+      const authWindow = window.open("about:blank", "_blank", "width=600,height=600")
 
-        // Si falla el popup, intentamos con redirección
+      if (!authWindow) {
+        console.error("No se pudo abrir la ventana de autenticación")
+        toast({
+          title: "Error",
+          description: "No se pudo abrir la ventana de autenticación. Por favor, permite ventanas emergentes.",
+          variant: "destructive",
+        })
+        return
+      }
+
+      // Configurar el proveedor para usar la nueva ventana
+      googleProvider.setCustomParameters({
+        prompt: "select_account",
+        display: "popup",
+      })
+
+      // Mensaje para el usuario
+      toast({
+        title: "Iniciando sesión",
+        description: "Se ha abierto una ventana para iniciar sesión con Google.",
+        variant: "default",
+      })
+
+      try {
+        // Usar signInWithPopup pero dirigido a la nueva ventana
+        // Nota: En una app real, esto requeriría implementación nativa
+        const result = await signInWithPopup(auth, googleProvider)
+        console.log("Inicio de sesión exitoso:", result.user.displayName)
+
+        // Cerrar la ventana de autenticación
+        authWindow.close()
+      } catch (popupError: any) {
+        console.warn("Error con popup:", popupError.message)
+
+        // Si falla, cerrar la ventana y mostrar mensaje
+        authWindow.close()
+
+        toast({
+          title: "Error de inicio de sesión",
+          description: "Hubo un problema al iniciar sesión. Intentando método alternativo...",
+          variant: "destructive",
+        })
+
+        // Intentar con redirección como respaldo
         await signInWithRedirect(auth, googleProvider)
       }
     } catch (error) {
