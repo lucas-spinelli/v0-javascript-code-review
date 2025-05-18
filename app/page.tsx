@@ -1,342 +1,143 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
-import { Progress } from "@/components/ui/progress"
-import { Badge } from "@/components/ui/badge"
-import { AlertCircle, CheckCircle, Clock, Trophy } from "lucide-react"
+import { useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { useAuth } from "@/contexts/auth-context"
+import { Card, CardContent } from "@/components/ui/card"
+import { BookOpen, Calculator, Award } from "lucide-react"
+import Image from "next/image"
+import { getRedirectResult } from "firebase/auth"
+import { auth } from "@/lib/firebase"
 import { useToast } from "@/hooks/use-toast"
-import confetti from "canvas-confetti"
+// Importar el nuevo componente LoginButton
+import { LoginButton } from "@/components/login-button"
 
-type Operation = "+" | "-" | "×" | "÷"
-
-interface Question {
-  num1: number
-  num2: number
-  operation: Operation
-  correctAnswer: number
-  options: number[]
-}
-
-export default function MathPractice() {
-  const [currentOperation, setCurrentOperation] = useState<Operation>("+")
-  const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null)
-  const [score, setScore] = useState(0)
-  const [streak, setStreak] = useState(0)
-  const [timeLeft, setTimeLeft] = useState(15)
-  const [isTimerRunning, setIsTimerRunning] = useState(false)
-  const [difficulty, setDifficulty] = useState<"fácil" | "medio" | "difícil">("fácil")
-  const [answeredQuestions, setAnsweredQuestions] = useState(0)
-  const [correctAnswers, setCorrectAnswers] = useState(0)
+export default function HomePage() {
+  const { user, loading, signInWithGoogle } = useAuth()
+  const router = useRouter()
   const { toast } = useToast()
 
-  // Generar una nueva pregunta
-  const generateQuestion = (operation: Operation) => {
-    setCurrentOperation(operation)
-    let num1, num2, correctAnswer
-
-    const ranges = {
-      fácil: { min: 1, max: 20, mult: 10 },
-      medio: { min: 10, max: 50, mult: 12 },
-      difícil: { min: 20, max: 100, mult: 15 },
-    }
-
-    const range = ranges[difficulty]
-
-    switch (operation) {
-      case "+":
-        num1 = generateNumber(range.min, range.max)
-        num2 = generateNumber(range.min, range.max)
-        correctAnswer = num1 + num2
-        break
-      case "-":
-        num1 = generateNumber(range.min + 30, range.max)
-        num2 = generateNumber(range.min, num1 - 1)
-        correctAnswer = num1 - num2
-        break
-      case "×":
-        num1 = generateNumber(1, range.mult)
-        num2 = generateNumber(1, range.mult)
-        correctAnswer = num1 * num2
-        break
-      case "÷":
-        num2 = generateNumber(1, range.mult)
-        correctAnswer = generateNumber(1, range.mult)
-        num1 = num2 * correctAnswer
-        break
-    }
-
-    const options = generateOptions(correctAnswer)
-
-    setCurrentQuestion({
-      num1,
-      num2,
-      operation,
-      correctAnswer,
-      options,
-    })
-
-    setTimeLeft(15)
-    setIsTimerRunning(true)
-  }
-
-  // Generar un número aleatorio entre min y max
-  const generateNumber = (min: number, max: number) => {
-    return Math.floor(Math.random() * (max - min + 1)) + min
-  }
-
-  // Generar opciones para la pregunta
-  const generateOptions = (correctAnswer: number) => {
-    const options = [correctAnswer]
-
-    while (options.length < 4) {
-      // Generar opciones cercanas al resultado correcto
-      const variation = generateNumber(1, Math.max(5, Math.floor(correctAnswer * 0.3)))
-
-      // Añadir o restar la variación
-      const option = Math.random() > 0.5 ? correctAnswer + variation : Math.max(0, correctAnswer - variation)
-
-      if (!options.includes(option)) {
-        options.push(option)
-      }
-    }
-
-    return options.sort(() => Math.random() - 0.5)
-  }
-
-  // Verificar respuesta
-  const checkAnswer = (selectedAnswer: number) => {
-    setIsTimerRunning(false)
-    setAnsweredQuestions((prev) => prev + 1)
-
-    if (currentQuestion && selectedAnswer === currentQuestion.correctAnswer) {
-      // Respuesta correcta
-      setCorrectAnswers((prev) => prev + 1)
-      setScore((prev) => prev + calculatePoints())
-      setStreak((prev) => prev + 1)
-
-      toast({
-        title: "¡Correcto!",
-        description: `+${calculatePoints()} puntos`,
-        variant: "default",
-      })
-
-      if (streak + 1 >= 5) {
-        // Lanzar confeti al lograr una racha de 5
-        confetti({
-          particleCount: 100,
-          spread: 70,
-          origin: { y: 0.6 },
-        })
-
+  useEffect(() => {
+    // Manejar el resultado de la redirección
+    const handleRedirectResult = async () => {
+      try {
+        const result = await getRedirectResult(auth)
+        if (result) {
+          console.log("Inicio de sesión exitoso:", result.user)
+        }
+      } catch (error) {
+        console.error("Error al manejar la redirección:", error)
         toast({
-          title: "¡Racha de " + (streak + 1) + "!",
-          description: "¡Sigue así!",
-          variant: "default",
+          title: "Error de inicio de sesión",
+          description: "Hubo un problema al iniciar sesión. Por favor, intenta de nuevo.",
+          variant: "destructive",
         })
       }
-
-      // Generar nueva pregunta después de un breve retraso
-      setTimeout(() => {
-        generateQuestion(currentOperation)
-      }, 1000)
-    } else {
-      // Respuesta incorrecta
-      setStreak(0)
-
-      toast({
-        title: "Incorrecto",
-        description: `La respuesta correcta era ${currentQuestion?.correctAnswer}`,
-        variant: "destructive",
-      })
-    }
-  }
-
-  // Calcular puntos basados en dificultad, tiempo restante y operación
-  const calculatePoints = () => {
-    if (!currentQuestion) return 0
-
-    const difficultyMultiplier = {
-      fácil: 1,
-      medio: 2,
-      difícil: 3,
-    }[difficulty]
-
-    const operationMultiplier = {
-      "+": 1,
-      "-": 1.2,
-      "×": 1.5,
-      "÷": 2,
-    }[currentQuestion.operation]
-
-    const timeBonus = Math.max(1, timeLeft / 5)
-
-    return Math.round(10 * difficultyMultiplier * operationMultiplier * timeBonus)
-  }
-
-  // Efecto para el temporizador
-  useEffect(() => {
-    let timer: NodeJS.Timeout
-
-    if (isTimerRunning && timeLeft > 0) {
-      timer = setTimeout(() => {
-        setTimeLeft((prev) => prev - 1)
-      }, 1000)
-    } else if (timeLeft === 0 && isTimerRunning) {
-      setIsTimerRunning(false)
-      toast({
-        title: "¡Tiempo agotado!",
-        description: `La respuesta correcta era ${currentQuestion?.correctAnswer}`,
-        variant: "destructive",
-      })
-      setStreak(0)
-      setAnsweredQuestions((prev) => prev + 1)
-
-      // Generar nueva pregunta después de un breve retraso
-      setTimeout(() => {
-        generateQuestion(currentOperation)
-      }, 1500)
     }
 
-    return () => clearTimeout(timer)
-  }, [timeLeft, isTimerRunning, currentQuestion, toast, currentOperation])
+    handleRedirectResult()
+  }, [toast])
 
-  // Generar primera pregunta al cargar
   useEffect(() => {
-    generateQuestion("+")
-  }, [difficulty])
+    if (!loading && user) {
+      router.push("/dashboard")
+    }
+  }, [loading, user, router])
 
-  // Calcular porcentaje de aciertos
-  const accuracyPercentage = answeredQuestions > 0 ? Math.round((correctAnswers / answeredQuestions) * 100) : 0
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-green-500"></div>
+      </div>
+    )
+  }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-50 to-indigo-100 py-8 px-4">
-      <div className="max-w-3xl mx-auto">
-        <h1 className="text-3xl font-bold text-center text-indigo-800 mb-6">Práctica de Matemáticas</h1>
+    <div className="min-h-screen bg-gradient-to-b from-green-50 to-green-100">
+      <div className="container mx-auto px-4 py-8">
+        <header className="flex justify-between items-center mb-12">
+          <div className="flex items-center">
+            <Calculator className="h-8 w-8 text-green-600 mr-2" />
+            <h1 className="text-3xl font-bold text-green-600">LuckMaths</h1>
+          </div>
+          {/* Reemplazar los botones de inicio de sesión existentes */}
+          <LoginButton />
+        </header>
 
-        {/* Estadísticas */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <Card className="p-4 text-center">
-            <Trophy className="h-6 w-6 mx-auto mb-2 text-yellow-500" />
-            <p className="text-sm text-gray-500">Puntuación</p>
-            <p className="text-xl font-bold">{score}</p>
-          </Card>
-
-          <Card className="p-4 text-center">
-            <CheckCircle className="h-6 w-6 mx-auto mb-2 text-green-500" />
-            <p className="text-sm text-gray-500">Racha</p>
-            <p className="text-xl font-bold">{streak}</p>
-          </Card>
-
-          <Card className="p-4 text-center">
-            <Clock className="h-6 w-6 mx-auto mb-2 text-blue-500" />
-            <p className="text-sm text-gray-500">Tiempo</p>
-            <p className="text-xl font-bold">{timeLeft}s</p>
-          </Card>
-
-          <Card className="p-4 text-center">
-            <AlertCircle className="h-6 w-6 mx-auto mb-2 text-purple-500" />
-            <p className="text-sm text-gray-500">Precisión</p>
-            <p className="text-xl font-bold">{accuracyPercentage}%</p>
-          </Card>
-        </div>
-
-        {/* Barra de tiempo */}
-        <div className="mb-6">
-          <Progress
-            value={(timeLeft / 15) * 100}
-            className="h-2"
-            indicatorClassName={`${timeLeft < 5 ? "bg-red-500" : "bg-green-500"}`}
-          />
-        </div>
-
-        {/* Selector de dificultad */}
-        <div className="flex justify-center mb-6 space-x-2">
-          <Badge
-            variant={difficulty === "fácil" ? "default" : "outline"}
-            className="cursor-pointer"
-            onClick={() => setDifficulty("fácil")}
-          >
-            Fácil
-          </Badge>
-          <Badge
-            variant={difficulty === "medio" ? "default" : "outline"}
-            className="cursor-pointer"
-            onClick={() => setDifficulty("medio")}
-          >
-            Medio
-          </Badge>
-          <Badge
-            variant={difficulty === "difícil" ? "default" : "outline"}
-            className="cursor-pointer"
-            onClick={() => setDifficulty("difícil")}
-          >
-            Difícil
-          </Badge>
-        </div>
-
-        {/* Selector de operaciones */}
-        <div className="flex flex-wrap justify-center gap-2 mb-8">
-          <Button
-            variant={currentOperation === "+" ? "default" : "outline"}
-            onClick={() => generateQuestion("+")}
-            className="min-w-[100px]"
-          >
-            Sumar (+)
-          </Button>
-          <Button
-            variant={currentOperation === "-" ? "default" : "outline"}
-            onClick={() => generateQuestion("-")}
-            className="min-w-[100px]"
-          >
-            Restar (-)
-          </Button>
-          <Button
-            variant={currentOperation === "×" ? "default" : "outline"}
-            onClick={() => generateQuestion("×")}
-            className="min-w-[100px]"
-          >
-            Multiplicar (×)
-          </Button>
-          <Button
-            variant={currentOperation === "÷" ? "default" : "outline"}
-            onClick={() => generateQuestion("÷")}
-            className="min-w-[100px]"
-          >
-            Dividir (÷)
-          </Button>
-        </div>
-
-        {/* Pregunta actual */}
-        {currentQuestion && (
-          <Card className="p-6 mb-6 shadow-lg">
-            <div className="text-3xl font-bold text-center mb-6">
-              {currentQuestion.num1} {currentQuestion.operation} {currentQuestion.num2} = ?
+        <main>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center mb-16">
+            <div>
+              <h2 className="text-4xl font-bold text-gray-800 mb-6">Aprende matemáticas de forma divertida</h2>
+              <p className="text-xl text-gray-600 mb-8">
+                LuckMaths te ayuda a dominar las matemáticas con ejercicios interactivos, seguimiento de progreso y un
+                sistema de recompensas que te mantiene motivado.
+              </p>
+              {/* También reemplazar: */}
+              <LoginButton size="lg" className="text-lg px-8 py-6 h-auto">
+                Comenzar ahora
+              </LoginButton>
             </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              {currentQuestion.options.map((option, index) => (
-                <Button
-                  key={index}
-                  variant="outline"
-                  size="lg"
-                  className="text-xl py-6 hover:bg-indigo-100"
-                  onClick={() => checkAnswer(option)}
-                >
-                  {option}
-                </Button>
-              ))}
+            <div className="flex justify-center">
+              <div className="relative w-80 h-80">
+                <Image
+                  src="/placeholder.svg?height=320&width=320"
+                  alt="Estudiantes aprendiendo matemáticas"
+                  width={320}
+                  height={320}
+                  className="rounded-lg shadow-xl"
+                />
+              </div>
             </div>
-          </Card>
-        )}
+          </div>
 
-        {/* Botón para saltar */}
-        <div className="text-center">
-          <Button variant="outline" onClick={() => generateQuestion(currentOperation)}>
-            Saltar pregunta
-          </Button>
-        </div>
+          <h3 className="text-2xl font-bold text-center text-gray-800 mb-8">¿Por qué elegir LuckMaths?</h3>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-16">
+            <Card className="border-green-200 shadow-md">
+              <CardContent className="pt-6">
+                <div className="flex flex-col items-center text-center">
+                  <div className="bg-green-100 p-3 rounded-full mb-4">
+                    <Calculator className="h-8 w-8 text-green-600" />
+                  </div>
+                  <h4 className="text-xl font-semibold mb-2">Ejercicios Interactivos</h4>
+                  <p className="text-gray-600">
+                    Practica sumas, restas, multiplicaciones y divisiones con ejercicios adaptados a tu nivel.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-green-200 shadow-md">
+              <CardContent className="pt-6">
+                <div className="flex flex-col items-center text-center">
+                  <div className="bg-green-100 p-3 rounded-full mb-4">
+                    <Award className="h-8 w-8 text-green-600" />
+                  </div>
+                  <h4 className="text-xl font-semibold mb-2">Sistema de Recompensas</h4>
+                  <p className="text-gray-600">
+                    Gana puntos, sube de nivel y mantén rachas diarias para mantenerte motivado.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-green-200 shadow-md">
+              <CardContent className="pt-6">
+                <div className="flex flex-col items-center text-center">
+                  <div className="bg-green-100 p-3 rounded-full mb-4">
+                    <BookOpen className="h-8 w-8 text-green-600" />
+                  </div>
+                  <h4 className="text-xl font-semibold mb-2">Seguimiento de Progreso</h4>
+                  <p className="text-gray-600">Visualiza tu avance y mejora continua con estadísticas detalladas.</p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </main>
+
+        <footer className="text-center text-gray-500 py-8">
+          <p>© 2025 LuckMaths. Todos los derechos reservados.</p>
+        </footer>
       </div>
     </div>
   )
