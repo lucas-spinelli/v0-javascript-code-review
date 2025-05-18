@@ -1,4 +1,4 @@
-import { initializeApp, getApps } from "firebase/app"
+import { initializeApp } from "firebase/app"
 import { getFirestore } from "firebase/firestore"
 import { getAuth, GoogleAuthProvider } from "firebase/auth"
 
@@ -13,18 +13,12 @@ const firebaseConfig = {
 }
 
 // Initialize Firebase
-let app
-if (getApps().length === 0) {
-  app = initializeApp(firebaseConfig)
-} else {
-  app = getApps()[0]
-}
-
+const app = initializeApp(firebaseConfig)
 const db = getFirestore(app)
 const auth = getAuth(app)
 const googleProvider = new GoogleAuthProvider()
 
-// Configurar el proveedor de Google correctamente
+// Configurar el proveedor de Google
 googleProvider.setCustomParameters({
   prompt: "select_account",
 })

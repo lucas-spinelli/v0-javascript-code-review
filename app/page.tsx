@@ -3,40 +3,14 @@
 import { useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth-context"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { BookOpen, Calculator, Award } from "lucide-react"
+import { BookOpen, Calculator, Award, LogIn } from "lucide-react"
 import Image from "next/image"
-import { getRedirectResult } from "firebase/auth"
-import { auth } from "@/lib/firebase"
-import { useToast } from "@/hooks/use-toast"
-// Importar el nuevo componente LoginButton
-import { LoginButton } from "@/components/login-button"
 
 export default function HomePage() {
   const { user, loading, signInWithGoogle } = useAuth()
   const router = useRouter()
-  const { toast } = useToast()
-
-  useEffect(() => {
-    // Manejar el resultado de la redirección
-    const handleRedirectResult = async () => {
-      try {
-        const result = await getRedirectResult(auth)
-        if (result) {
-          console.log("Inicio de sesión exitoso:", result.user)
-        }
-      } catch (error) {
-        console.error("Error al manejar la redirección:", error)
-        toast({
-          title: "Error de inicio de sesión",
-          description: "Hubo un problema al iniciar sesión. Por favor, intenta de nuevo.",
-          variant: "destructive",
-        })
-      }
-    }
-
-    handleRedirectResult()
-  }, [toast])
 
   useEffect(() => {
     if (!loading && user) {
@@ -52,6 +26,11 @@ export default function HomePage() {
     )
   }
 
+  const handleLogin = async () => {
+    console.log("Botón de inicio de sesión clickeado")
+    await signInWithGoogle()
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-green-50 to-green-100">
       <div className="container mx-auto px-4 py-8">
@@ -60,8 +39,10 @@ export default function HomePage() {
             <Calculator className="h-8 w-8 text-green-600 mr-2" />
             <h1 className="text-3xl font-bold text-green-600">LuckMaths</h1>
           </div>
-          {/* Reemplazar los botones de inicio de sesión existentes */}
-          <LoginButton />
+          <Button onClick={handleLogin} className="bg-green-600 hover:bg-green-700">
+            <LogIn className="h-4 w-4 mr-2" />
+            Iniciar con Google
+          </Button>
         </header>
 
         <main>
@@ -72,10 +53,13 @@ export default function HomePage() {
                 LuckMaths te ayuda a dominar las matemáticas con ejercicios interactivos, seguimiento de progreso y un
                 sistema de recompensas que te mantiene motivado.
               </p>
-              {/* También reemplazar: */}
-              <LoginButton size="lg" className="text-lg px-8 py-6 h-auto">
+              <Button
+                onClick={handleLogin}
+                size="lg"
+                className="bg-green-600 hover:bg-green-700 text-lg px-8 py-6 h-auto"
+              >
                 Comenzar ahora
-              </LoginButton>
+              </Button>
             </div>
             <div className="flex justify-center">
               <div className="relative w-80 h-80">
