@@ -14,6 +14,7 @@ import { auth, googleProvider, db } from "@/lib/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { getProgressFromLocalStorage, initLocalProgress, type LocalUserProgress } from "@/services/storage-service"
 import { syncPendingUpdates, refreshUserDataFromFirebase } from "@/services/user-service"
+import { isNativePlatform, handleNativeAuth } from "@/lib/native-features"
 
 interface AuthContextType {
   user: User | null
@@ -204,53 +205,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       console.log("Intentando iniciar sesión con Google...")
 
-      // Abrir una nueva ventana para la autenticación
-      const authWindow = window.open("about:blank", "_blank", "width=600,height=600")
+      // Si estamos en un entorno nativo (Android/iOS)
+      if (isNativePlatform()) {
+        // URL de autenticación de Firebase para OAuth
+        const authUrl = `https://luckmaths-28bbb.firebaseapp.com/__/auth/handler?provider=google.com&apiKey=${process.env.NEXT_PUBLIC_FIREBASE_API_KEY}`
 
-      if (!authWindow) {
-        console.error("No se pudo abrir la ventana de autenticación")
-        toast({
-          title: "Error",
-          description: "No se pudo abrir la ventana de autenticación. Por favor, permite ventanas emergentes.",
-          variant: "destructive",
-        })
+        // Abrir el navegador del sistema para autenticación
+        const opened = await handleNativeAuth(authUrl)
+
+        if (!opened) {
+          throw new Error("No se pudo abrir el navegador para autenticación")
+        }
+
+        // La app manejará el resultado de la autenticación a través de deep links
         return
       }
 
-      // Configurar el proveedor para usar la nueva ventana
-      googleProvider.setCustomParameters({
-        prompt: "select_account",
-        display: "popup",
-      })
-
-      // Mensaje para el usuario
-      toast({
-        title: "Iniciando sesión",
-        description: "Se ha abierto una ventana para iniciar sesión con Google.",
-        variant: "default",
-      })
-
+      // Código para entorno web (igual que antes)
       try {
-        // Usar signInWithPopup pero dirigido a la nueva ventana
-        // Nota: En una app real, esto requeriría implementación nativa
         const result = await signInWithPopup(auth, googleProvider)
-        console.log("Inicio de sesión exitoso:", result.user.displayName)
-
-        // Cerrar la ventana de autenticación
-        authWindow.close()
+        console.log("Inicio de sesión con popup exitoso:", result.user.displayName)
+        return
       } catch (popupError: any) {
-        console.warn("Error con popup:", popupError.message)
+        console.warn("Error con popup, intentando redirección:", popupError.message)
 
-        // Si falla, cerrar la ventana y mostrar mensaje
-        authWindow.close()
-
-        toast({
-          title: "Error de inicio de sesión",
-          description: "Hubo un problema al iniciar sesión. Intentando método alternativo...",
-          variant: "destructive",
-        })
-
-        // Intentar con redirección como respaldo
+        // Si falla el popup, intentamos con redirección
         await signInWithRedirect(auth, googleProvider)
       }
     } catch (error) {

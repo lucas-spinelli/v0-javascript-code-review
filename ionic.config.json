@@ -1,0 +1,7 @@
+{
+  "name": "LuckMaths",
+  "integrations": {
+    "capacitor": {}
+  },
+  "type": "custom"
+}

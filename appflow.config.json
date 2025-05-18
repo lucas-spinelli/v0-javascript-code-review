@@ -1,0 +1,18 @@
+{
+  "apps": [
+    {
+      "appId": "com.luckmaths.app",
+      "root": ".",
+      "webDir": "out",
+      "dependencies": {
+        "cordova-plugin-ionic-webview": {},
+        "cordova-plugin-ionic-keyboard": {}
+      },
+      "android": {
+        "release": {
+          "signingType": "apk"
+        }
+      }
+    }
+  ]
+}
